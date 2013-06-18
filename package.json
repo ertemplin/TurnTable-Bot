@@ -1,0 +1,15 @@
+{
+	"name": "Qualcomm-TurnTable-Bot",
+	"preferGlobal": true,
+	"version": "1.0.0",
+	"author": "ertemplin <ertemplin@gmail.com>",
+	"description": "A simple stats bot for turntable",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/ertemplin/TurnTable-Bot.git"
+	},
+	"dependencies" : {
+		"ttapi": "2.3.x"
+	}
+
+}
