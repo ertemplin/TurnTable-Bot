@@ -22,14 +22,39 @@ bot.on('pmmed', function (data) {
 	handleMessage(data, true);
 });
 
+function checkModStatus(id, callback) {
+	bot.roomInfo(function (data) {
+		for(i = 0; i<data.room.metadata.moderator_id.length; i++) {
+			if(id == data.room.metadata.moderator_id[i]) {
+				callback(true);
+				return;
+			}
+		}
+		callback(false);
+	});
+}
+
 function handleMessage(data, pm) {
 	var msg = '';
 	if (data.text.match(/^\/hello$/)) {
-		msg = 'Hey! How are you @'+data.name+' ?';
+		msg = 'Hey! How are you '+(pm ? '' : '@' + data.name)+' ?';
 	} else if (data.text.match(/^:botdance:$/)) {
-		bot.bop();
+		checkModStatus((pm ? data.senderid : data.userid), function (result) {
+			if (result)
+				bot.bop();
+		})
 	} else if (data.text.match(/^\/uptime$/i)) {
 		upTime(data, pm);
+	} else if (data.text.match(/^\/myid$/)) {
+		msg = (pm ? data.senderid : data.userid);
+	} else if (data.text.match(/^\/checkmod$/)) {
+		checkModStatus((pm ? data.senderid : data.userid), function (result) {
+			if(result) {
+				bot.speak('You are a moderator!');
+			} else {
+				bot.speak('You aren\'t a moderator!');
+			}
+		});
 	}
 	
 	if (msg != '') {
