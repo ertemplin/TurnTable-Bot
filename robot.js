@@ -1,17 +1,51 @@
 var Bot = require('ttapi');
 var Secret = require('./secret.js')
-var bot = new Bot(Secret.AUTH, Secret.USERID, Secret.ROOMID);
+var bot = new Bot(Secret.AUTH, Secret.USERID);
 var imDjing = false;
+var djList = []
 
-var netwatchdogTimer = null; // Used to detect internet connection dropping out
-var startTime = Date.now(); // Holds start time of the bot
-var reLogins = 0; // The number of times the bot has re-logged on due to internet/tt.fm outage.
-var botDownDATEtime = ""; // The time/date the bot went down.
-var botDownUTCtime = 0; // Used to save the UTC time the bot went down.
-var botDowntime = 0; // Used to save the duration of time the bot was down for last.
+/*
+ * We use a flag to track whether or not we are disconnected. This is because
+ * in most cases the underlying WebSocket class will emit 2 events when a
+ * connection error occurs: the first indicates an unexpected stream error,
+ * and the second indicates that the connection is closed. Tracking the
+ * current state allows us to ensure that we are making only one attempt to
+ * recover from the connection failure.
+ */
+var disconnected = false;
+
+function connect(roomid) {
+	// Reset the disconnected flag
+	disconnected = false;
+
+	// Attempt to join the room
+	bot.roomRegister(roomid, function (data) {
+		if (data && data.success) {
+			console.log('Joined ' + data.room.name);
+		} else {
+			console.log('Failed to join room');
+			if(!disconnected) {
+				// Set the disconnected flag
+				disconnected = true;
+				// Try again in 60 seconds
+				setTimeout(connect, 60 * 1000, roomid);
+			}
+		}
+	});
+}
 
 bot.on('ready', function() {
-	console.log("[ BOT is READY FREDDY! on " + Date() + " ] ");
+	connect(Secret.ROOMID);
+});
+
+bot.on('disconnected', function(e) {
+	if(!disconnected) {
+		// Set the disconnected flag and display message
+		disconnected = true;
+		console.log("disconnected: " + e);
+		// Attempt to reconnect in 10 seconds
+		setTimeout(connect, 10 * 1000, Secred.ROOMID);
+	}
 });
 
 bot.on('speak', function (data) {
@@ -42,9 +76,14 @@ function handleMessage(data, pm) {
 		checkModStatus((pm ? data.senderid : data.userid), function (result) {
 			if (result)
 				bot.bop();
-		})
+		});
+	} else if (data.text.match(/^\/downvote$/)) { 
+		checkModStatus((pm ? data.senderid : data.userid), function (result) {
+			if (result)
+				bot.vote('down');
+		});
 	} else if (data.text.match(/^\/uptime$/i)) {
-		upTime(data, pm);
+		msg = 'Working on this comand...';
 	} else if (data.text.match(/^\/myid$/)) {
 		msg = (pm ? data.senderid : data.userid);
 	} else if (data.text.match(/^\/checkmod$/)) {
@@ -55,6 +94,18 @@ function handleMessage(data, pm) {
 				bot.speak('You aren\'t a moderator!');
 			}
 		});
+	} else if (data.text.match(/^\/djtimers$/)) {
+		for(i = 0; i<djList.length; i++) {
+			msg += djList[i].user.name;
+			msg += ': ';
+			var time = Date.now() - djList[i].uptime;
+			var utHours = Math.floor(time / (1000 * 3600));
+			var utMins = Math.floor((time % (3600 * 1000)) / (1000 * 60));
+			var utSecs = Math.floor((time % (60 * 1000)) / 1000);
+			msg += utHours + ':' + utMins + ':' + utSecs;
+			if(i != djList.length - 1)
+				msg += ', ';
+		}
 	}
 	
 	if (msg != '') {
@@ -86,6 +137,7 @@ bot.on('add_dj', function (data) {
 			imDjing = true;
 		}
 	});
+	djList.push({user : data.user[0], uptime : Date.now()})
 });
 
 bot.on('rem_dj', function (data) {
@@ -103,21 +155,10 @@ bot.on('rem_dj', function (data) {
 			}
 		}
 	});
-});
-
-bot.on('wserror', function (data) { // Loss of connection detected, takes about 20 seconds
-		console.log("[ BOT GOT WS ERROR ]: " + data + " on " + Date());
-		botDownDATEtime = Date(); // save the down date/time.
-		botDownUTCtime = Date.now(); // save the UTC time the bot went down.
-		setTimeout(function () {
-			startWatchdog();
-			}, 10 * 1000); // give the bot 10 seconds to fully fail before attempting to reconnect
-});
-
-bot.on('alive', function () { // Reset the watchdog timer if bot is alive
-	if (netwatchdogTimer != null) {
-		clearTimeout(netwatchdogTimer);
-		netwatchdogTimer = null;
+	for(i = 0; i < djList.length; i++) {
+		if(djList[i].user.userid == data.user[0].userid) {
+			djList.splice(i, 1);
+		}
 	}
 });
 
@@ -148,41 +189,3 @@ bot.on('endsong', function (data) {
 	snaggedcount = 0;
 });
 
-function upTime(data, pm) {
-	var timeNow = Date.now();
-	var upTime = timeNow - startTime;
-	var utHours = Math.floor(upTime / (1000 * 3600));
-	var utMins = Math.floor((upTime % (3600 * 1000)) / (1000 * 60));
-	var utSecs = Math.floor((upTime % (60 * 1000)) / 1000);
-	if (reLogins > 0) var relogins = " and gracefully re-logged on due to internet / tt.fm outages " + reLogins + " time(s). Was last down for " + botDowntime + " second(s)";
-	else var relogins = "";
-	if (utHours > 0) {
-		if (pm) bot.pm("I've been slaving away for " + utHours + " hour(s) " + utMins + " minute(s) and " + utSecs + " second(s) now!" + relogins, data.senderid);
-		else bot.speak("/me has been slaving away for " + utHours + " hour(s) " + utMins + " minute(s) and " + utSecs + " second(s) now!" + relogins);
-	} else if (utMins > 0) {
-		if (pm) bot.pm("I've been slaving away for " + utMins + " minute(s) and " + utSecs + " second(s) now!" + relogins, data.senderid);
-		else bot.speak("/me has been slaving away for " + utMins + " minute(s) and " + utSecs + " second(s) now!" + relogins);
-	} else {
-		if (pm) bot.pm("I've been slaving away for " + utSecs + " second(s) now!" + relogins, data.senderid);
-		else bot.speak("/me has been slaving away for " + utSecs + " second(s) now!" + relogins);
-	}
-}
-
-function startWatchdog() { // Start the watchdog timer
-	if (netwatchdogTimer == null) {
-		netwatchdogTimer = setInterval(function () {
-			console.log("[ WAITING FOR INTERNET/TT.FM TO COME BACK!!! ]");
-			bot.roomRegister(ROOMID, function (data) {
-				if (data && data.success) {
-					console.log("[ I'M BACK!!!! WEEEEEEEeeeeeeeeee!!! ]");
-					botDowntime = (Date.now() - botDownUTCtime) / 1000;
-					reLogins += 1; // Increment the reLogin counter.
-					bot.pm("NET/TT.FM WAS DOWN on " + botDownDATEtime + " for " + botDowntime + " second(s)", ADMIN);
-					console.log("[ NET/TT.FM WAS DOWN on " + botDownDATEtime + " for " + botDowntime + " second(s) ]");
-					// Here you can re-initialize things if you need to, like re-loading a queue
-					// ...
-				}
-			});
-		}, 10 * 1000); // Try to log back in every 10 seconds
-	}
-}

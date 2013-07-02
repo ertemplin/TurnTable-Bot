@@ -9,7 +9,7 @@
 		"url": "https://github.com/ertemplin/TurnTable-Bot.git"
 	},
 	"dependencies" : {
-		"ttapi": "2.3.x"
+		"ttapi": "3.x.x"
 	}
 
 }
